@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { api } from '@/lib/api';
+import { Navbar } from '@/components/layout/Navbar';
 
 interface Document {
   id: string;
@@ -43,13 +43,7 @@ export default function DocumentsPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">DocGen</h1>
-        <nav className="flex gap-4 text-sm">
-          <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">Templates</Link>
-          <Link href="/documents" className="font-semibold">Documentos</Link>
-        </nav>
-      </header>
+      <Navbar authenticated />
 
       <main className="max-w-4xl mx-auto px-6 py-8">
         <h2 className="text-2xl font-semibold mb-6">Documentos gerados</h2>

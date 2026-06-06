@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { api } from '@/lib/api';
+import { Navbar } from '@/components/layout/Navbar';
 
 interface Plan {
   slug: string;
@@ -73,8 +73,11 @@ export default function BillingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Carregando planos...</p>
+      <div className="min-h-screen">
+        <Navbar authenticated />
+        <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center">
+          <p className="text-gray-500">Carregando planos...</p>
+        </div>
       </div>
     );
   }
@@ -83,14 +86,7 @@ export default function BillingPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">DocGen</h1>
-        <nav className="flex gap-4 text-sm">
-          <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">Templates</Link>
-          <Link href="/documents" className="text-gray-600 hover:text-gray-900">Documentos</Link>
-          <Link href="/billing" className="font-semibold">Planos</Link>
-        </nav>
-      </header>
+      <Navbar authenticated />
 
       <main className="max-w-5xl mx-auto px-6 py-12">
         <div className="text-center mb-10">

@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Cookies from 'js-cookie';
 import { api } from '@/lib/api';
 import GenerateModal from './generate-modal';
+import { Navbar } from '@/components/layout/Navbar';
 
 interface Template {
   id: string;
@@ -29,33 +29,9 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, [router]);
 
-  function logout() {
-    Cookies.remove('accessToken');
-    Cookies.remove('refreshToken');
-    router.push('/login');
-  }
-
   return (
     <div className="min-h-screen">
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">DocGen</h1>
-        <div className="flex gap-4 items-center">
-          <nav className="flex gap-4 text-sm">
-            <Link href="/dashboard" className="font-semibold">Templates</Link>
-            <Link href="/documents" className="text-gray-600 hover:text-gray-900">Documentos</Link>
-            <Link href="/billing" className="text-gray-600 hover:text-gray-900">Planos</Link>
-          </nav>
-          <Link
-            href="/templates/new"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition"
-          >
-            Novo template
-          </Link>
-          <button onClick={logout} className="text-sm text-gray-600 hover:text-gray-900">
-            Sair
-          </button>
-        </div>
-      </header>
+      <Navbar authenticated />
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         <h2 className="text-2xl font-semibold mb-6">Meus templates</h2>
