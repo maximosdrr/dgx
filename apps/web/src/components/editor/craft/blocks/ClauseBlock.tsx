@@ -1,6 +1,13 @@
 'use client';
 import { useNode } from '@craftjs/core';
 import { useRef, useEffect } from 'react';
+import {
+  applyVariableHighlight,
+  clearEditableSelection,
+  deleteVariableChipBeforeCursor,
+  parseContentWithVariables,
+  rememberEditableSelection,
+} from '@/lib/editor/variableParser';
 
 export interface ClauseBlockProps {
   number: string;
@@ -31,29 +38,67 @@ const ClauseBlockSettings = () => {
 
 const useEditableRef = (
   initialContent: string,
-  onBlur: (html: string) => void
+  onBlur: (html: string) => void,
+  options: { field: keyof ClauseBlockProps; highlightVariables?: boolean; onInputChange?: (html: string) => void }
 ) => {
   const ref = useRef<HTMLDivElement | null>(null);
   const initialized = useRef(false);
   const focused = useRef(false);
+  const highlightVariables = options.highlightVariables ?? false;
+
+  const decorate = (html: string) => highlightVariables ? parseContentWithVariables(html) : html;
 
   useEffect(() => {
     if (ref.current && !initialized.current) {
-      ref.current.innerHTML = initialContent;
+      ref.current.dataset.craftPropField = String(options.field);
+      ref.current.innerHTML = decorate(initialContent);
       initialized.current = true;
     }
   }, []); // intentionally empty — initialContent only used on first mount
 
   useEffect(() => {
     if (ref.current && initialized.current && !focused.current) {
-      if (ref.current.innerHTML !== initialContent) ref.current.innerHTML = initialContent;
+      const parsedContent = decorate(initialContent);
+      if (ref.current.innerHTML !== parsedContent) ref.current.innerHTML = parsedContent;
     }
   }, [initialContent]);
 
+  useEffect(() => () => {
+    if (ref.current) clearEditableSelection(ref.current);
+  }, []);
+
+  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    rememberEditableSelection(el, String(options.field));
+    options.onInputChange?.(el.innerHTML);
+
+    if (highlightVariables && el.innerText.endsWith('}}')) {
+      requestAnimationFrame(() => {
+        if (applyVariableHighlight(el)) options.onInputChange?.(el.innerHTML);
+      });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    rememberEditableSelection(e.currentTarget, String(options.field));
+    if (highlightVariables && e.key === 'Backspace' && deleteVariableChipBeforeCursor(e.currentTarget)) {
+      e.preventDefault();
+      options.onInputChange?.(e.currentTarget.innerHTML);
+    }
+  };
+
   const handlers = {
-    onFocus: () => { focused.current = true; },
+    onFocus: (e: React.FocusEvent<HTMLDivElement>) => {
+      focused.current = true;
+      rememberEditableSelection(e.currentTarget, String(options.field));
+    },
+    onMouseUp: (e: React.MouseEvent<HTMLDivElement>) => rememberEditableSelection(e.currentTarget, String(options.field)),
+    onKeyUp: (e: React.KeyboardEvent<HTMLDivElement>) => rememberEditableSelection(e.currentTarget, String(options.field)),
+    onKeyDown: handleKeyDown,
+    onInput: handleInput,
     onBlur: (e: React.FocusEvent<HTMLDivElement>) => {
       focused.current = false;
+      if (highlightVariables) applyVariableHighlight(e.currentTarget);
       onBlur(e.currentTarget.innerHTML);
     },
   };
@@ -70,8 +115,20 @@ export const ClauseBlock = ({
   const { connectors: { connect, drag }, actions: { setProp } } = useNode();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const titleEdit = useEditableRef(title, (html) => setProp((p: ClauseBlockProps) => { p.title = html; }));
-  const contentEdit = useEditableRef(content, (html) => setProp((p: ClauseBlockProps) => { p.content = html; }));
+  const titleEdit = useEditableRef(
+    title,
+    (html) => setProp((p: ClauseBlockProps) => { p.title = html; }),
+    { field: 'title' },
+  );
+  const contentEdit = useEditableRef(
+    content,
+    (html) => setProp((p: ClauseBlockProps) => { p.content = html; }),
+    {
+      field: 'content',
+      highlightVariables: true,
+      onInputChange: (html) => setProp((p: ClauseBlockProps) => { p.content = html; }),
+    },
+  );
 
   return (
     <div

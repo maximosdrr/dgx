@@ -1,6 +1,13 @@
 'use client';
 import { useNode } from '@craftjs/core';
 import { useRef, useEffect } from 'react';
+import {
+  applyVariableHighlight,
+  clearEditableSelection,
+  deleteVariableChipBeforeCursor,
+  parseContentWithVariables,
+  rememberEditableSelection,
+} from '@/lib/editor/variableParser';
 
 export interface TextBlockProps {
   content: string;
@@ -93,18 +100,47 @@ export const TextBlock = ({
 
   useEffect(() => {
     if (divRef.current && !initialized.current) {
-      divRef.current.innerHTML = content;
+      divRef.current.innerHTML = parseContentWithVariables(content);
       initialized.current = true;
     }
   }, []); // intentionally empty — content only used on first mount
 
   useEffect(() => {
     if (divRef.current && initialized.current && !focused.current) {
-      if (divRef.current.innerHTML !== content) {
-        divRef.current.innerHTML = content;
+      const parsedContent = parseContentWithVariables(content);
+      if (divRef.current.innerHTML !== parsedContent) {
+        divRef.current.innerHTML = parsedContent;
       }
     }
   }, [content]);
+
+  useEffect(() => () => {
+    if (divRef.current) clearEditableSelection(divRef.current);
+  }, []);
+
+  const syncContent = (html: string) => {
+    setProp((p: TextBlockProps) => { p.content = html; });
+  };
+
+  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    rememberEditableSelection(el, 'content');
+    syncContent(el.innerHTML);
+
+    if (el.innerText.endsWith('}}')) {
+      requestAnimationFrame(() => {
+        if (applyVariableHighlight(el)) syncContent(el.innerHTML);
+      });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    rememberEditableSelection(e.currentTarget, 'content');
+    if (e.key === 'Backspace' && deleteVariableChipBeforeCursor(e.currentTarget)) {
+      e.preventDefault();
+      syncContent(e.currentTarget.innerHTML);
+    }
+  };
 
   return (
     <div
@@ -112,19 +148,27 @@ export const TextBlock = ({
         if (el) {
           connect(drag(el));
           divRef.current = el;
+          el.dataset.craftPropField = 'content';
           if (!initialized.current) {
-            el.innerHTML = content;
+            el.innerHTML = parseContentWithVariables(content);
             initialized.current = true;
           }
         }
       }}
       contentEditable
       suppressContentEditableWarning
-      onFocus={() => { focused.current = true; }}
+      onFocus={(e) => {
+        focused.current = true;
+        rememberEditableSelection(e.currentTarget, 'content');
+      }}
+      onMouseUp={(e) => rememberEditableSelection(e.currentTarget, 'content')}
+      onKeyUp={(e) => rememberEditableSelection(e.currentTarget, 'content')}
+      onKeyDown={handleKeyDown}
+      onInput={handleInput}
       onBlur={(e) => {
         focused.current = false;
-        const html = e.currentTarget.innerHTML;
-        setProp((p: TextBlockProps) => { p.content = html; });
+        applyVariableHighlight(e.currentTarget);
+        syncContent(e.currentTarget.innerHTML);
       }}
       style={{
         fontSize: `${fontSize}pt`,

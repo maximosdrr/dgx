@@ -2,6 +2,7 @@
 import { useEditor } from '@craftjs/core';
 import React, { useState } from 'react';
 import { useVariableDetector, VarType, DetectedVariable } from '@/hooks/useVariableDetector';
+import { createVariableChipHTML, getSavedEditableField, insertVariableChipAtSavedSelection } from '@/lib/editor/variableParser';
 
 // ── Document properties ────────────────────────────────────────────────────
 
@@ -100,6 +101,36 @@ interface VariablesPanelProps {
 
 const VariablesPanel = ({ typeMeta, onTypeChange }: VariablesPanelProps) => {
   const variables = useVariableDetector(typeMeta);
+  const [warning, setWarning] = useState('');
+  const { actions, selected, nodes } = useEditor((state) => ({
+    selected: state.events.selected,
+    nodes: state.nodes,
+  }));
+
+  const insertVariable = (variable: DetectedVariable) => {
+    const selectedNodeId = selected && selected.size > 0 ? Array.from(selected)[0] : null;
+    if (!selectedNodeId) {
+      setWarning('Selecione um bloco de texto primeiro');
+      return;
+    }
+
+    const selectedNode = nodes[selectedNodeId];
+    if (!selectedNode || typeof selectedNode.data.props?.content !== 'string') {
+      setWarning('Selecione um bloco de texto ou cláusula');
+      return;
+    }
+
+    const inserted = insertVariableChipAtSavedSelection(variable.name, variable.type);
+    const chip = createVariableChipHTML(variable.name, variable.type);
+    const fallbackField = getSavedEditableField();
+
+    actions.setProp(selectedNodeId, (props: Record<string, unknown>) => {
+      const field = inserted?.field ?? (typeof props[fallbackField] === 'string' ? fallbackField : 'content');
+      props[field] = inserted?.html ?? `${props[field] ?? ''}${chip}`;
+    });
+
+    setWarning('');
+  };
 
   const scrollToVariable = (name: string) => {
     // Find a DOM element that contains {{name}} and scroll it into view
@@ -139,6 +170,11 @@ const VariablesPanel = ({ typeMeta, onTypeChange }: VariablesPanelProps) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {warning && (
+        <p style={{ color: '#dc2626', fontSize: '11px', lineHeight: 1.4, marginBottom: '2px' }}>
+          {warning}
+        </p>
+      )}
       {variables.map((v: DetectedVariable) => (
         <div
           key={v.name}
@@ -157,16 +193,29 @@ const VariablesPanel = ({ typeMeta, onTypeChange }: VariablesPanelProps) => {
             }}>
               {'{}'}  {v.name}
             </span>
-            <button
-              onClick={() => scrollToVariable(v.name)}
-              title="Localizar no documento"
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: '#9ca3af', fontSize: '13px', padding: '0 2px', flexShrink: 0,
-              }}
-            >
-              ↗
-            </button>
+            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => insertVariable(v)}
+                title="Inserir no bloco selecionado"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: '#2563eb', fontSize: '13px', padding: '0 2px',
+                }}
+              >
+                ↗
+              </button>
+              <button
+                onClick={() => scrollToVariable(v.name)}
+                title="Localizar no documento"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: '#9ca3af', fontSize: '13px', padding: '0 2px',
+                }}
+              >
+                ⌖
+              </button>
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '10px', color: '#9ca3af', whiteSpace: 'nowrap' }}>Tipo:</span>

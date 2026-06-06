@@ -2,18 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Tiptap variable highlight */
 .variable-chip {
-  display: inline-block;
-  background: #dbeafe;
-  color: #1d4ed8;
-  border: 1px solid #bfdbfe;
+  display: inline-flex;
+  align-items: center;
+  background-color: #DBEAFE;
+  color: #1D4ED8;
+  border: 1px solid #BFDBFE;
   border-radius: 4px;
-  padding: 1px 4px;
-  font-family: ui-monospace, monospace;
+  padding: 0 6px;
   font-size: 0.85em;
+  font-family: monospace;
+  font-weight: 500;
   cursor: default;
-  user-select: all;
+  user-select: none;
+  white-space: nowrap;
+  margin: 0 2px;
+  pointer-events: none;
+}
+
+.variable-chip::before {
+  content: '{}';
+  margin-right: 4px;
+  opacity: 0.5;
+  font-size: 0.8em;
 }
 
 /* Tiptap prose styles */
