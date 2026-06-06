@@ -32,6 +32,26 @@ export class S3Service {
     });
   }
 
+  async uploadFile(key: string, buffer: Buffer, contentType: string): Promise<void> {
+    try {
+      await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: buffer, ContentType: contentType }));
+    } catch (err) {
+      throw new InternalServerErrorException(`S3 upload failed: ${(err as Error).message}`);
+    }
+  }
+
+  /** Returns a public-accessible object URL.
+   *  For local MinIO: <endpoint>/<bucket>/<key>
+   *  For AWS S3: https://<bucket>.s3.<region>.amazonaws.com/<key>
+   */
+  getObjectUrl(key: string): string {
+    const endpoint = this.config.get<string>('S3_ENDPOINT');
+    const region = this.config.get<string>('AWS_REGION', 'us-east-1');
+    return endpoint
+      ? `${endpoint}/${this.bucket}/${key}`
+      : `https://${this.bucket}.s3.${region}.amazonaws.com/${key}`;
+  }
+
   async uploadPdf(key: string, buffer: Buffer): Promise<void> {
     try {
       await this.client.send(

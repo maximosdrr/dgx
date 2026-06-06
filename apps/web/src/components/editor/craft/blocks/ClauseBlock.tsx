@@ -1,0 +1,128 @@
+'use client';
+import { useNode } from '@craftjs/core';
+import { useRef, useEffect } from 'react';
+
+export interface ClauseBlockProps {
+  number: string;
+  title: string;
+  content: string;
+  showNumber: boolean;
+}
+
+const ClauseBlockSettings = () => {
+  const { actions: { setProp }, props } = useNode((n) => ({ props: n.data.props as ClauseBlockProps }));
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Número da cláusula</label>
+        <input value={props.number}
+          onChange={(e) => setProp((p: ClauseBlockProps) => { p.number = e.target.value; })}
+          className="w-full border rounded px-2 py-1 text-sm" />
+      </div>
+      <div>
+        <button onClick={() => setProp((p: ClauseBlockProps) => { p.showNumber = !p.showNumber; })}
+          className={`w-full py-1 text-sm border rounded ${props.showNumber ? 'bg-blue-500 text-white border-blue-500' : 'hover:bg-gray-50'}`}>
+          {props.showNumber ? 'Ocultar número' : 'Mostrar número'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const useEditableRef = (
+  initialContent: string,
+  onBlur: (html: string) => void
+) => {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const initialized = useRef(false);
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (ref.current && !initialized.current) {
+      ref.current.innerHTML = initialContent;
+      initialized.current = true;
+    }
+  }, []); // intentionally empty — initialContent only used on first mount
+
+  useEffect(() => {
+    if (ref.current && initialized.current && !focused.current) {
+      if (ref.current.innerHTML !== initialContent) ref.current.innerHTML = initialContent;
+    }
+  }, [initialContent]);
+
+  const handlers = {
+    onFocus: () => { focused.current = true; },
+    onBlur: (e: React.FocusEvent<HTMLDivElement>) => {
+      focused.current = false;
+      onBlur(e.currentTarget.innerHTML);
+    },
+  };
+
+  return { ref, handlers };
+};
+
+export const ClauseBlock = ({
+  number = '1',
+  title = 'DAS DISPOSIÇÕES GERAIS',
+  content = '<p>Inserir o conteúdo da cláusula aqui...</p>',
+  showNumber = true,
+}: Partial<ClauseBlockProps>) => {
+  const { connectors: { connect, drag }, actions: { setProp } } = useNode();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const titleEdit = useEditableRef(title, (html) => setProp((p: ClauseBlockProps) => { p.title = html; }));
+  const contentEdit = useEditableRef(content, (html) => setProp((p: ClauseBlockProps) => { p.content = html; }));
+
+  return (
+    <div
+      ref={(el) => { if (el) { connect(drag(el)); containerRef.current = el; } }}
+      style={{ margin: '12px 0' }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '4px' }}>
+        {showNumber && (
+          <span style={{ fontWeight: 700, fontSize: '12pt', minWidth: '1.5em' }}>{number}.</span>
+        )}
+        <div
+          ref={titleEdit.ref}
+          contentEditable
+          suppressContentEditableWarning
+          {...titleEdit.handlers}
+          style={{
+            fontWeight: 700,
+            fontSize: '12pt',
+            textTransform: 'uppercase',
+            outline: 'none',
+            flex: 1,
+            letterSpacing: '0.02em',
+          }}
+        />
+      </div>
+      <div
+        ref={contentEdit.ref}
+        contentEditable
+        suppressContentEditableWarning
+        {...contentEdit.handlers}
+        style={{
+          fontSize: '12pt',
+          lineHeight: 1.7,
+          textAlign: 'justify',
+          outline: 'none',
+          minHeight: '1.5em',
+          wordBreak: 'break-word',
+          marginLeft: showNumber ? '1.8em' : 0,
+        }}
+      />
+    </div>
+  );
+};
+
+ClauseBlock.craft = {
+  displayName: 'Cláusula',
+  props: {
+    number: '1',
+    title: 'DAS DISPOSIÇÕES GERAIS',
+    content: '<p>Inserir o conteúdo da cláusula aqui...</p>',
+    showNumber: true,
+  } as ClauseBlockProps,
+  related: { toolbar: ClauseBlockSettings },
+};
