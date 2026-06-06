@@ -140,6 +140,55 @@ function htmlToNode(html: string): Node {
   return template.content.firstChild ?? document.createTextNode('');
 }
 
+function textPositionBeforeCursor(range: Range, root: HTMLElement): { node: Text; offset: number } | null {
+  if (!range.collapsed || !selectionIsInside(root, range)) return null;
+
+  if (range.startContainer.nodeType === Node.TEXT_NODE) {
+    return { node: range.startContainer as Text, offset: range.startOffset };
+  }
+
+  if (range.startContainer.nodeType !== Node.ELEMENT_NODE) return null;
+
+  const element = range.startContainer as Element;
+  const previous = element.childNodes[range.startOffset - 1];
+  if (previous?.nodeType === Node.TEXT_NODE) {
+    return { node: previous as Text, offset: previous.textContent?.length ?? 0 };
+  }
+
+  return null;
+}
+
+export function convertVariableBeforeCursor(element: HTMLElement, type = 'text'): boolean {
+  const selection = window.getSelection();
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  if (!range) return false;
+
+  const position = textPositionBeforeCursor(range, element);
+  if (!position) return false;
+
+  const beforeCursor = position.node.textContent?.slice(0, position.offset) ?? '';
+  const match = beforeCursor.match(/\{\{([a-zA-Z0-9_]+)\}\}$/);
+  if (!match) return false;
+
+  const [token, name] = match;
+  const replaceRange = document.createRange();
+  replaceRange.setStart(position.node, position.offset - token.length);
+  replaceRange.setEnd(position.node, position.offset);
+  replaceRange.deleteContents();
+
+  const chip = htmlToNode(createVariableChipHTML(name, type));
+  replaceRange.insertNode(chip);
+
+  const nextRange = document.createRange();
+  nextRange.setStartAfter(chip);
+  nextRange.collapse(true);
+  selection?.removeAllRanges();
+  selection?.addRange(nextRange);
+
+  rememberEditableSelection(element, element.dataset.craftPropField ?? 'content');
+  return true;
+}
+
 export function insertVariableChipAtSavedSelection(name: string, type = 'text'): { html: string; field: string } | null {
   const target = savedEditableRange?.element;
   if (!target || !document.body.contains(target)) return null;

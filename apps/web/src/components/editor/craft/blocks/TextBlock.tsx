@@ -4,6 +4,7 @@ import { useRef, useEffect } from 'react';
 import {
   applyVariableHighlight,
   clearEditableSelection,
+  convertVariableBeforeCursor,
   deleteVariableChipBeforeCursor,
   parseContentWithVariables,
   rememberEditableSelection,
@@ -127,11 +128,19 @@ export const TextBlock = ({
     rememberEditableSelection(el, 'content');
     syncContent(el.innerHTML);
 
-    if (el.innerText.endsWith('}}')) {
-      requestAnimationFrame(() => {
-        if (applyVariableHighlight(el)) syncContent(el.innerHTML);
-      });
-    }
+    requestAnimationFrame(() => {
+      if (convertVariableBeforeCursor(el)) syncContent(el.innerHTML);
+    });
+  };
+
+  const handleKeyUp = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    rememberEditableSelection(el, 'content');
+    if (e.key !== '}') return;
+
+    requestAnimationFrame(() => {
+      if (convertVariableBeforeCursor(el)) syncContent(el.innerHTML);
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -162,7 +171,7 @@ export const TextBlock = ({
         rememberEditableSelection(e.currentTarget, 'content');
       }}
       onMouseUp={(e) => rememberEditableSelection(e.currentTarget, 'content')}
-      onKeyUp={(e) => rememberEditableSelection(e.currentTarget, 'content')}
+      onKeyUp={handleKeyUp}
       onKeyDown={handleKeyDown}
       onInput={handleInput}
       onBlur={(e) => {

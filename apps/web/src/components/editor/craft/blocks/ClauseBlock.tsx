@@ -4,6 +4,7 @@ import { useRef, useEffect } from 'react';
 import {
   applyVariableHighlight,
   clearEditableSelection,
+  convertVariableBeforeCursor,
   deleteVariableChipBeforeCursor,
   parseContentWithVariables,
   rememberEditableSelection,
@@ -72,11 +73,20 @@ const useEditableRef = (
     rememberEditableSelection(el, String(options.field));
     options.onInputChange?.(el.innerHTML);
 
-    if (highlightVariables && el.innerText.endsWith('}}')) {
-      requestAnimationFrame(() => {
-        if (applyVariableHighlight(el)) options.onInputChange?.(el.innerHTML);
-      });
-    }
+    if (!highlightVariables) return;
+    requestAnimationFrame(() => {
+      if (convertVariableBeforeCursor(el)) options.onInputChange?.(el.innerHTML);
+    });
+  };
+
+  const handleKeyUp = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    rememberEditableSelection(el, String(options.field));
+    if (!highlightVariables || e.key !== '}') return;
+
+    requestAnimationFrame(() => {
+      if (convertVariableBeforeCursor(el)) options.onInputChange?.(el.innerHTML);
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -93,7 +103,7 @@ const useEditableRef = (
       rememberEditableSelection(e.currentTarget, String(options.field));
     },
     onMouseUp: (e: React.MouseEvent<HTMLDivElement>) => rememberEditableSelection(e.currentTarget, String(options.field)),
-    onKeyUp: (e: React.KeyboardEvent<HTMLDivElement>) => rememberEditableSelection(e.currentTarget, String(options.field)),
+    onKeyUp: handleKeyUp,
     onKeyDown: handleKeyDown,
     onInput: handleInput,
     onBlur: (e: React.FocusEvent<HTMLDivElement>) => {
