@@ -1,6 +1,6 @@
 import { Entity, PrimaryKey, Property, ManyToOne, Enum, Ref, Opt } from '@mikro-orm/core';
 import { v4 as uuidv4 } from 'uuid';
-import { DocumentStatus } from '@docgen/shared';
+import { DocumentStatus, SignatureStatus, SignatureType } from '@docgen/shared';
 import { User } from './user.entity';
 import { Template } from './template.entity';
 
@@ -29,6 +29,21 @@ export class Document {
 
   @Property({ type: 'jsonb', default: '{}' })
   variables: Record<string, string> & Opt = {};
+
+  @Property({ fieldName: 'signature_status' })
+  signatureStatus: SignatureStatus & Opt = SignatureStatus.PENDING;
+
+  @Property({ nullable: true, fieldName: 'signature_type' })
+  signatureType?: SignatureType;
+
+  @Property({ nullable: true, fieldName: 'signed_at' })
+  signedAt?: Date;
+
+  @Property({ nullable: true, fieldName: 'signature_ip' })
+  signatureIp?: string;
+
+  @Property({ type: 'jsonb', nullable: true, fieldName: 'signature_data' })
+  signatureData?: Record<string, unknown>;
 
   @Property()
   createdAt: Date & Opt = new Date();

@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Navbar } from '@/components/layout/Navbar';
 
 interface Document {
   id: string;
   status: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
+  signatureStatus?: 'PENDING' | 'SIGNED';
+  signatureType?: 'WRITTEN' | 'FACIAL';
   presignedUrl?: string;
   expiresAt?: string;
   variables: Record<string, string>;
@@ -62,20 +65,33 @@ export default function DocumentsPage() {
                 <p className="text-xs text-gray-400">
                   {new Date(doc.createdAt).toLocaleString('pt-BR')}
                 </p>
+                {doc.signatureStatus === 'SIGNED' && (
+                  <p className="text-xs font-medium text-green-700">
+                    Assinado por {doc.signatureType === 'FACIAL' ? 'reconhecimento facial' : 'assinatura escrita'}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLOR[doc.status]}`}>
                   {STATUS_LABEL[doc.status]}
                 </span>
                 {doc.status === 'DONE' && doc.presignedUrl && (
-                  <a
-                    href={doc.presignedUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-blue-600 hover:underline font-medium"
-                  >
-                    Baixar PDF
-                  </a>
+                  <>
+                    <Link
+                      href={`/documents/${doc.id}/sign`}
+                      className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+                    >
+                      Assinar
+                    </Link>
+                    <a
+                      href={doc.presignedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-gray-500 hover:text-gray-900 font-medium"
+                    >
+                      Baixar PDF
+                    </a>
+                  </>
                 )}
               </div>
             </div>

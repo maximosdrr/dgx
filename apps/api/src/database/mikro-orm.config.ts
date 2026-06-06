@@ -6,10 +6,11 @@ import { Template } from '../common/entities/template.entity';
 import { Document } from '../common/entities/document.entity';
 import { UsageLog } from '../common/entities/usage-log.entity';
 import { Subscription } from '../common/entities/subscription.entity';
+import { BiometricSignature } from '../common/entities/biometric-signature.entity';
 
 export default defineConfig({
   clientUrl: process.env.DATABASE_URL ?? 'postgresql://docgen:docgen@localhost:5432/docgen',
-  entities: [User, Template, Document, UsageLog, Subscription],
+  entities: [User, Template, Document, UsageLog, Subscription, BiometricSignature],
   migrations: {
     path: './src/database/migrations',
     pathTs: './src/database/migrations',

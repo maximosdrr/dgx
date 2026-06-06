@@ -10,6 +10,7 @@ import { UsageModule } from './usage/usage.module';
 import { StorageModule } from './storage/storage.module';
 import { PdfModule } from './pdf/pdf.module';
 import { BillingModule } from './billing/billing.module';
+import { SignaturesModule } from './signatures/signatures.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import mikroOrmConfig from './database/mikro-orm.config';
 
@@ -24,6 +25,7 @@ import mikroOrmConfig from './database/mikro-orm.config';
     StorageModule,
     PdfModule,
     BillingModule,
+    SignaturesModule,
   ],
   providers: [
     {

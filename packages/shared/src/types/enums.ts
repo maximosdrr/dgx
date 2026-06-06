@@ -12,6 +12,16 @@ export enum DocumentStatus {
   FAILED = 'FAILED',
 }
 
+export enum SignatureStatus {
+  PENDING = 'PENDING',
+  SIGNED = 'SIGNED',
+}
+
+export enum SignatureType {
+  WRITTEN = 'WRITTEN',
+  FACIAL = 'FACIAL',
+}
+
 export enum PlanSlug {
   FREE = 'FREE',
   STARTER = 'STARTER',
