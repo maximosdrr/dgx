@@ -1,0 +1,30 @@
+{
+  "name": "docgen",
+  "version": "0.0.1",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:api": "pnpm --filter @docgen/api dev:ts",
+    "dev:web": "pnpm --filter @docgen/web dev",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "migrate": "pnpm --filter @docgen/api migrate",
+    "seed": "pnpm --filter @docgen/api seed"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.0"
+  }
+}

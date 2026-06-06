@@ -1,0 +1,104 @@
+service: docgen-api
+
+frameworkVersion: '3'
+
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-offline
+
+custom:
+  dotenv:
+    path: .env
+  serverless-offline:
+    httpPort: 3001
+    noPrependStageInUrl: true
+  # Sparticuz Chromium layer — update ARN for the version matching @sparticuz/chromium installed
+  # Latest ARNs: https://github.com/Sparticuz/chromium/releases
+  chromiumLayer:
+    arn: arn:aws:lambda:us-east-1:764866452798:layer:chromium-v123:1
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  stage: ${opt:stage, 'local'}
+  memorySize: 512
+  timeout: 30
+  environment:
+    NODE_ENV: ${env:NODE_ENV, 'production'}
+    DATABASE_URL: ${env:DATABASE_URL}
+    JWT_SECRET: ${env:JWT_SECRET}
+    JWT_ACCESS_EXPIRES: ${env:JWT_ACCESS_EXPIRES, '15m'}
+    JWT_REFRESH_EXPIRES: ${env:JWT_REFRESH_EXPIRES, '7d'}
+    AWS_REGION: ${env:AWS_REGION, 'us-east-1'}
+    S3_BUCKET: ${env:S3_BUCKET}
+    ABACATEPAY_API_KEY: ${env:ABACATEPAY_API_KEY}
+    ABACATEPAY_WEBHOOK_SECRET: ${env:ABACATEPAY_WEBHOOK_SECRET, ''}
+    APP_URL: ${env:APP_URL, 'http://localhost:3000'}
+    # Local dev: set path to system Chrome/Chromium
+    # CHROME_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+          Resource: arn:aws:s3:::${env:S3_BUCKET}/*
+
+functions:
+  authHandler:
+    handler: dist/lambda.authHandler
+    memorySize: 256
+    timeout: 15
+    events:
+      - http:
+          path: /auth/{proxy+}
+          method: ANY
+          cors: true
+
+  templatesHandler:
+    handler: dist/lambda.templatesHandler
+    memorySize: 256
+    timeout: 15
+    events:
+      - http:
+          path: /templates/{proxy+}
+          method: ANY
+          cors: true
+      - http:
+          path: /templates
+          method: ANY
+          cors: true
+
+  billingHandler:
+    handler: dist/lambda.billingHandler
+    memorySize: 256
+    timeout: 15
+    events:
+      - http:
+          path: /billing/{proxy+}
+          method: ANY
+          cors: true
+      - http:
+          path: /billing
+          method: ANY
+          cors: true
+
+  documentsHandler:
+    handler: dist/lambda.documentsHandler
+    # Puppeteer needs more memory and time
+    memorySize: 1536
+    timeout: 120
+    layers:
+      - ${self:custom.chromiumLayer.arn}
+    events:
+      - http:
+          path: /documents/{proxy+}
+          method: ANY
+          cors: true
+      - http:
+          path: /documents
+          method: ANY
+          cors: true
