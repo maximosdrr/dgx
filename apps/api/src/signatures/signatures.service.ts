@@ -3,9 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { EntityManager } from '@mikro-orm/core';
 import { createHash, createHmac } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { DocumentStatus, SignatureStatus, SignatureType, UserPayload } from '@docgen/shared';
+import { DocumentStatus, UserPayload } from '@docgen/shared';
 import { BiometricSignature } from '../common/entities/biometric-signature.entity';
-import { Document } from '../common/entities/document.entity';
+import { Document, SignatureStatus, SignatureType } from '../common/entities/document.entity';
 import { Template } from '../common/entities/template.entity';
 import { User } from '../common/entities/user.entity';
 import { PdfService } from '../pdf/pdf.service';
@@ -60,7 +60,7 @@ export class SignaturesService {
     const { url, expiresAt } = await this.finalizeSignedDocument({
       em,
       document,
-      signatureType: SignatureType.WRITTEN,
+      signatureType: 'WRITTEN',
       signedAt,
       ipAddress,
       signatureData,
@@ -78,8 +78,8 @@ export class SignaturesService {
       signatureId,
       documentId: document.id,
       signedAt: signedAt.toISOString(),
-      signatureType: SignatureType.WRITTEN,
-      signatureStatus: SignatureStatus.SIGNED,
+      signatureType: 'WRITTEN',
+      signatureStatus: 'SIGNED',
       signatureImageHash,
       presignedUrl: url,
       expiresAt,
@@ -142,7 +142,7 @@ export class SignaturesService {
     const { url, expiresAt } = await this.finalizeSignedDocument({
       em,
       document,
-      signatureType: SignatureType.FACIAL,
+      signatureType: 'FACIAL',
       signedAt,
       ipAddress,
       signatureData,
@@ -161,8 +161,8 @@ export class SignaturesService {
       signatureId,
       documentId: document.id,
       signedAt: signedAt.toISOString(),
-      signatureType: SignatureType.FACIAL,
-      signatureStatus: SignatureStatus.SIGNED,
+      signatureType: 'FACIAL',
+      signatureStatus: 'SIGNED',
       faceImageHash,
       signatureKey,
       presignedUrl: url,
@@ -197,7 +197,8 @@ export class SignaturesService {
     signatureData: Record<string, unknown>;
     logHtml: string;
   }): Promise<{ url: string; expiresAt: Date }> {
-    const template = document.template as unknown as Template;
+    const template = (document.template as any).unwrap?.() as Template
+      ?? document.template as unknown as Template;
     const content = (template.schema as any)?.content as string | undefined;
     if (!content) throw new BadRequestException('Document template has no content to render');
 
@@ -208,7 +209,7 @@ export class SignaturesService {
     await this.s3Service.uploadPdf(s3Key, signedPdf);
     const { url, expiresAt } = await this.s3Service.getPresignedUrl(s3Key);
 
-    document.signatureStatus = SignatureStatus.SIGNED;
+    document.signatureStatus = 'SIGNED';
     document.signatureType = signatureType;
     document.signedAt = signedAt;
     document.signatureIp = ipAddress;

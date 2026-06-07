@@ -18,6 +18,7 @@ interface FacialSignatureResult {
   expiresAt: string;
   faceImageHash: string;
   signatureKey: string;
+  signerName?: string;
 }
 
 export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatureCaptureProps) {
@@ -110,8 +111,9 @@ export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatu
         faceImageBase64,
       });
       const payload = data.data ?? data;
-      setResult(payload);
-      onComplete(payload);
+      const resultWithSigner = { ...payload, signerName: signerName.trim() };
+      setResult(resultWithSigner);
+      onComplete(resultWithSigner);
     } catch (err: any) {
       setError(err.response?.data?.error?.message ?? 'Não foi possível validar a assinatura facial.');
     } finally {
@@ -127,8 +129,12 @@ export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatu
     setError('');
 
     try {
-      const width = video.videoWidth || 1280;
-      const height = video.videoHeight || 720;
+      const sourceWidth = video.videoWidth || 1280;
+      const sourceHeight = video.videoHeight || 720;
+      const maxWidth = 960;
+      const scale = Math.min(1, maxWidth / sourceWidth);
+      const width = Math.round(sourceWidth * scale);
+      const height = Math.round(sourceHeight * scale);
       canvas.width = width;
       canvas.height = height;
 
@@ -136,7 +142,7 @@ export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatu
       if (!context) throw new Error('Canvas unavailable');
 
       context.drawImage(video, 0, 0, width, height);
-      const faceImageBase64 = canvas.toDataURL('image/png');
+      const faceImageBase64 = canvas.toDataURL('image/jpeg', 0.82);
       setCapturedImage(faceImageBase64);
       closeCamera();
       await submitFacialSignature(faceImageBase64);

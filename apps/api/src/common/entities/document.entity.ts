@@ -1,8 +1,11 @@
 import { Entity, PrimaryKey, Property, ManyToOne, Enum, Ref, Opt } from '@mikro-orm/core';
 import { v4 as uuidv4 } from 'uuid';
-import { DocumentStatus, SignatureStatus, SignatureType } from '@docgen/shared';
+import { DocumentStatus } from '@docgen/shared';
 import { User } from './user.entity';
 import { Template } from './template.entity';
+
+export type SignatureStatus = 'PENDING' | 'SIGNED';
+export type SignatureType = 'WRITTEN' | 'FACIAL';
 
 @Entity({ tableName: 'documents' })
 export class Document {
@@ -31,7 +34,7 @@ export class Document {
   variables: Record<string, string> & Opt = {};
 
   @Property({ fieldName: 'signature_status' })
-  signatureStatus: SignatureStatus & Opt = SignatureStatus.PENDING;
+  signatureStatus: SignatureStatus & Opt = 'PENDING';
 
   @Property({ nullable: true, fieldName: 'signature_type' })
   signatureType?: SignatureType;
