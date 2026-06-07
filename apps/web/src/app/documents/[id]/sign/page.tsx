@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Navbar } from '@/components/layout/Navbar';
-import { FacialSignatureCapture } from '@/components/signature/FacialSignatureCapture';
+import { FacialCaptureResult, FacialSignatureCapture } from '@/components/signature/FacialSignatureCapture';
 import { WrittenSignaturePad } from '@/components/signature/WrittenSignaturePad';
 import { api } from '@/lib/api';
 
@@ -25,6 +25,25 @@ interface DocumentDetail {
     name: string;
     schema?: { content?: string };
   };
+  signatureData?: {
+    signatures?: PersistedSignature[];
+  };
+}
+
+interface PersistedSignature {
+  signatureId: string;
+  slotId: string;
+  label: string;
+  type: SignatureKind;
+  signerName?: string;
+  signerDocument?: string;
+  signatureImageUrl?: string;
+  signatureImageBase64?: string;
+  signatureImageKey?: string;
+  signatureImageHash?: string;
+  faceImageBase64?: string;
+  faceImageHash?: string;
+  signatureKey?: string;
 }
 
 interface SignatureCompletionResult {
@@ -49,6 +68,12 @@ interface SavedSignature {
   label: string;
   image?: string;
   signerName?: string;
+  signerDocument?: string;
+  faceImageBase64?: string;
+  signatureImageKey?: string;
+  signatureImageHash?: string;
+  faceImageHash?: string;
+  signatureKey?: string;
   result?: SignatureCompletionResult;
 }
 
@@ -58,6 +83,12 @@ interface SlotSignature {
   label: string;
   image?: string;
   signerName?: string;
+  signerDocument?: string;
+  faceImageBase64?: string;
+  signatureImageKey?: string;
+  signatureImageHash?: string;
+  faceImageHash?: string;
+  signatureKey?: string;
 }
 
 const SIGNATURE_LABELS = [
@@ -141,7 +172,8 @@ function renderSignatureSlot(slot: SignatureSlot, signature?: SlotSignature): st
 
   if (signature?.kind === 'WRITTEN' && signature.image) {
     return `
-      <div data-signature-slot-rendered="${slot.id}" style="${baseStyle}">
+      <div data-signature-slot-rendered="${slot.id}" style="${baseStyle};position:relative;">
+        <button type="button" data-delete-signature="${slot.id}" aria-label="Remover assinatura" style="position:absolute;right:-24px;top:8px;width:20px;height:20px;border:1px solid #fecaca;border-radius:999px;background:#fff;color:#dc2626;font-size:12px;line-height:16px;cursor:pointer;">×</button>
         <img src="${signature.image}" alt="Assinatura de ${escapeHtml(slot.label)}" style="max-height:70px;width:100%;object-fit:contain;display:block;margin:0 auto -6px;" />
         <div style="border-top:1px solid #333;width:100%;height:1px;"></div>
       </div>
@@ -150,7 +182,8 @@ function renderSignatureSlot(slot: SignatureSlot, signature?: SlotSignature): st
 
   if (signature?.kind === 'FACIAL') {
     return `
-      <div data-signature-slot-rendered="${slot.id}" style="${baseStyle}">
+      <div data-signature-slot-rendered="${slot.id}" style="${baseStyle};position:relative;">
+        <button type="button" data-delete-signature="${slot.id}" aria-label="Remover assinatura" style="position:absolute;right:-24px;top:8px;width:20px;height:20px;border:1px solid #fecaca;border-radius:999px;background:#fff;color:#dc2626;font-size:12px;line-height:16px;cursor:pointer;">×</button>
         <div style="width:100%;border-bottom:1px solid #333;padding-bottom:4px;font:inherit;font-size:12pt;font-weight:400;color:#1a1a1a;">
           ${escapeHtml(signature.signerName ?? signature.label)}
         </div>
@@ -236,6 +269,51 @@ function renderDocumentWithSlots(
   };
 }
 
+function hydratePersistedSignatures(doc: DocumentDetail): {
+  slots: Record<string, SlotSignature>;
+  reusable: SavedSignature[];
+} {
+  const signatures = doc.signatureData?.signatures ?? [];
+  const slots: Record<string, SlotSignature> = {};
+  const reusable: SavedSignature[] = [];
+
+  for (const signature of signatures) {
+    if (!signature.slotId || !signature.type) continue;
+
+    const image = signature.signatureImageBase64 ?? signature.signatureImageUrl;
+    const slotSignature: SlotSignature = {
+      signatureId: signature.signatureId,
+      kind: signature.type,
+      label: signature.label,
+      image,
+      signerName: signature.signerName,
+      signerDocument: signature.signerDocument,
+      faceImageBase64: signature.faceImageBase64,
+      signatureImageKey: signature.signatureImageKey,
+      signatureImageHash: signature.signatureImageHash,
+      faceImageHash: signature.faceImageHash,
+      signatureKey: signature.signatureKey,
+    };
+
+    slots[signature.slotId] = slotSignature;
+    reusable.push({
+      id: signature.signatureId,
+      kind: signature.type,
+      label: signature.label,
+      image,
+      signerName: signature.signerName,
+      signerDocument: signature.signerDocument,
+      faceImageBase64: signature.faceImageBase64,
+      signatureImageKey: signature.signatureImageKey,
+      signatureImageHash: signature.signatureImageHash,
+      faceImageHash: signature.faceImageHash,
+      signatureKey: signature.signatureKey,
+    });
+  }
+
+  return { slots, reusable };
+}
+
 export default function SignDocumentPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -248,13 +326,21 @@ export default function SignDocumentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [signing, setSigning] = useState(false);
+  const [savingAll, setSavingAll] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
   const [signatureError, setSignatureError] = useState('');
 
   useEffect(() => {
     if (!params.id) return;
 
     api.get(`/documents/${params.id}`)
-      .then(({ data }) => setDoc(data.data ?? data))
+      .then(({ data }) => {
+        const loadedDoc: DocumentDetail = data.data ?? data;
+        const hydrated = hydratePersistedSignatures(loadedDoc);
+        setDoc(loadedDoc);
+        setSlotSignatures(hydrated.slots);
+        setSavedSignatures(hydrated.reusable);
+      })
       .catch(() => {
         setError('Não foi possível carregar o documento.');
         router.push('/documents');
@@ -270,6 +356,7 @@ export default function SignDocumentPage() {
   const activeSlot = slots.find((slot) => slot.id === activeSlotId) ?? null;
   const usedMethods = new Set(savedSignatures.map((signature) => signature.kind));
   const availableNewMethods: SignatureKind[] = (['WRITTEN', 'FACIAL'] as const).filter((kind) => !usedMethods.has(kind));
+  const signedSlotCount = Object.keys(slotSignatures).length;
 
   function openSlot(slotId: string) {
     setActiveSlotId(slotId);
@@ -306,12 +393,34 @@ export default function SignDocumentPage() {
         label: signature.label,
         image: signature.image,
         signerName: signature.signerName,
+        signerDocument: signature.signerDocument,
+        faceImageBase64: signature.faceImageBase64,
+        signatureImageKey: signature.signatureImageKey,
+        signatureImageHash: signature.signatureImageHash,
+        faceImageHash: signature.faceImageHash,
+        signatureKey: signature.signatureKey,
       },
     }));
     closePanel();
   }
 
-  async function submitWrittenSignature(signatureImageBase64: string) {
+  function newLocalSignatureId(): string {
+    return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function removeSlotSignature(slotId: string) {
+    setSlotSignatures((current) => {
+      const next = { ...current };
+      delete next[slotId];
+      return next;
+    });
+    if (activeSlotId === slotId) closePanel();
+    setSaveMessage('');
+  }
+
+  function submitWrittenSignature(signatureImageBase64: string) {
     if (!doc || !activeSlot) return;
     setSignatureError('');
     if (writtenSignerName.trim().length < 2) {
@@ -321,19 +430,12 @@ export default function SignDocumentPage() {
 
     setSigning(true);
     try {
-      const { data } = await api.post('/signatures/written', {
-        documentId: doc.id,
-        signerName: writtenSignerName,
-        signatureImageBase64,
-      });
-      const result: SignatureCompletionResult = data.data ?? data;
       const saved: SavedSignature = {
-      id: result.signatureId,
-      kind: 'WRITTEN',
-      label: 'assinatura escrita',
-      image: signatureImageBase64,
-      signerName: writtenSignerName,
-      result,
+        id: newLocalSignatureId(),
+        kind: 'WRITTEN',
+        label: 'assinatura escrita',
+        image: signatureImageBase64,
+        signerName: writtenSignerName,
       };
       setSavedSignatures((current) => [...current, saved]);
       setSlotSignatures((current) => ({
@@ -343,25 +445,27 @@ export default function SignDocumentPage() {
           kind: saved.kind,
           label: saved.label,
           image: saved.image,
+          signerName: saved.signerName,
         },
       }));
-      applySignatureResult(result);
       closePanel();
-    } catch (err: any) {
-      setSignatureError(err.response?.data?.error?.message ?? 'Não foi possível concluir a assinatura escrita.');
+      setSaveMessage('');
+    } catch {
+      setSignatureError('Não foi possível concluir a assinatura escrita.');
     } finally {
       setSigning(false);
     }
   }
 
-  function handleFacialComplete(result: SignatureCompletionResult) {
+  function handleFacialComplete(result: FacialCaptureResult) {
     if (!activeSlot) return;
     const saved: SavedSignature = {
-      id: result.signatureId,
+      id: newLocalSignatureId(),
       kind: 'FACIAL',
       label: 'assinatura facial',
       signerName: result.signerName,
-      result,
+      signerDocument: result.signerDocument,
+      faceImageBase64: result.faceImageBase64,
     };
     setSavedSignatures((current) => [...current, saved]);
     setSlotSignatures((current) => ({
@@ -371,10 +475,49 @@ export default function SignDocumentPage() {
         kind: saved.kind,
         label: saved.label,
         signerName: result.signerName,
+        signerDocument: result.signerDocument,
+        faceImageBase64: result.faceImageBase64,
       },
     }));
-    applySignatureResult(result);
     closePanel();
+    setSaveMessage('');
+  }
+
+  async function saveAllSignatures() {
+    if (!doc || !signedSlotCount) return;
+    setSavingAll(true);
+    setSignatureError('');
+    setSaveMessage('');
+
+    try {
+      const signatures = Object.entries(slotSignatures).map(([slotId, signature]) => ({
+        slotId,
+        label: slots.find((slot) => slot.id === slotId)?.label ?? signature.label,
+        type: signature.kind,
+        signerName: signature.signerName ?? signature.label,
+        signerDocument: signature.signerDocument,
+        signatureImageBase64: signature.kind === 'WRITTEN' && signature.image?.startsWith('data:')
+          ? signature.image
+          : undefined,
+        signatureImageKey: signature.kind === 'WRITTEN' ? signature.signatureImageKey : undefined,
+        signatureImageHash: signature.kind === 'WRITTEN' ? signature.signatureImageHash : undefined,
+        faceImageBase64: signature.kind === 'FACIAL' ? signature.faceImageBase64 : undefined,
+        faceImageHash: signature.kind === 'FACIAL' ? signature.faceImageHash : undefined,
+        signatureKey: signature.kind === 'FACIAL' ? signature.signatureKey : undefined,
+      }));
+
+      const { data } = await api.post('/signatures/batch', {
+        documentId: doc.id,
+        signatures,
+      });
+      const result: SignatureCompletionResult = data.data ?? data;
+      applySignatureResult(result);
+      setSaveMessage('Assinaturas salvas com sucesso.');
+    } catch (err: any) {
+      setSignatureError(err.response?.data?.error?.message ?? 'Não foi possível salvar as assinaturas.');
+    } finally {
+      setSavingAll(false);
+    }
   }
 
   return (
@@ -395,7 +538,21 @@ export default function SignDocumentPage() {
               </p>
             )}
           </div>
+          <button
+            type="button"
+            onClick={saveAllSignatures}
+            disabled={!signedSlotCount || savingAll}
+            className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {savingAll ? 'Salvando...' : 'Salvar Assinaturas'}
+          </button>
         </div>
+
+        {saveMessage && (
+          <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            {saveMessage}
+          </div>
+        )}
 
         {loading && <p className="text-gray-500">Carregando documento...</p>}
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -419,6 +576,13 @@ export default function SignDocumentPage() {
                 className="max-h-[calc(100vh-14rem)] min-h-[560px] overflow-auto rounded-lg border border-gray-100 bg-gray-100 p-6"
                 onClick={(event) => {
                   const target = event.target as HTMLElement;
+                  const deleteButton = target.closest<HTMLButtonElement>('button[data-delete-signature]');
+                  if (deleteButton?.dataset.deleteSignature) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    removeSlotSignature(deleteButton.dataset.deleteSignature);
+                    return;
+                  }
                   const button = target.closest<HTMLButtonElement>('button[data-signature-slot]');
                   if (button?.dataset.signatureSlot) openSlot(button.dataset.signatureSlot);
                 }}
@@ -508,7 +672,7 @@ export default function SignDocumentPage() {
                   )}
 
                   {step === 'facial' && (
-                    <FacialSignatureCapture documentId={doc.id} onComplete={handleFacialComplete} />
+                    <FacialSignatureCapture onComplete={handleFacialComplete} />
                   )}
                 </div>
               )}

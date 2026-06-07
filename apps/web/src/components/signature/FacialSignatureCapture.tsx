@@ -1,27 +1,18 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
 
 interface FacialSignatureCaptureProps {
-  documentId: string;
-  onComplete: (result: FacialSignatureResult) => void;
+  onComplete: (result: FacialCaptureResult) => void;
 }
 
-interface FacialSignatureResult {
-  signatureId: string;
-  documentId: string;
-  signedAt: string;
-  signatureType: 'FACIAL';
-  signatureStatus: 'SIGNED';
-  presignedUrl: string;
-  expiresAt: string;
-  faceImageHash: string;
-  signatureKey: string;
-  signerName?: string;
+export interface FacialCaptureResult {
+  signerName: string;
+  signerDocument: string;
+  faceImageBase64: string;
 }
 
-export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatureCaptureProps) {
+export function FacialSignatureCapture({ onComplete }: FacialSignatureCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -30,9 +21,8 @@ export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatu
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [result, setResult] = useState<FacialSignatureResult | null>(null);
+  const [completed, setCompleted] = useState(false);
   const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!cameraOpen) return;
@@ -100,28 +90,7 @@ export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatu
     stopCamera();
   }
 
-  async function submitFacialSignature(faceImageBase64: string) {
-    setSubmitting(true);
-
-    try {
-      const { data } = await api.post('/signatures/facial', {
-        documentId,
-        signerName,
-        signerDocument,
-        faceImageBase64,
-      });
-      const payload = data.data ?? data;
-      const resultWithSigner = { ...payload, signerName: signerName.trim() };
-      setResult(resultWithSigner);
-      onComplete(resultWithSigner);
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message ?? 'Não foi possível validar a assinatura facial.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function capturePhoto() {
+  function capturePhoto() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || !cameraReady) return;
@@ -145,9 +114,14 @@ export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatu
       const faceImageBase64 = canvas.toDataURL('image/jpeg', 0.82);
       setCapturedImage(faceImageBase64);
       closeCamera();
-      await submitFacialSignature(faceImageBase64);
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message ?? 'Não foi possível validar a assinatura facial.');
+      setCompleted(true);
+      onComplete({
+        signerName: signerName.trim(),
+        signerDocument,
+        faceImageBase64,
+      });
+    } catch {
+      setError('Não foi possível capturar a foto facial.');
     }
   }
 
@@ -186,7 +160,7 @@ export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatu
       <button
         type="button"
         onClick={openCamera}
-        disabled={!canOpenCamera || submitting}
+        disabled={!canOpenCamera}
         className="mt-5 w-full rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Abrir Câmera para Captura
@@ -205,20 +179,13 @@ export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatu
         </div>
       )}
 
-      {result && (
+      {completed && (
         <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3">
-          <p className="text-sm font-semibold text-green-800">Validação concluída</p>
-          <p className="mt-1 break-all text-xs text-green-700">
-            UUID: {result.signatureId}
-          </p>
+          <p className="text-sm font-semibold text-green-800">Foto facial pronta para salvar</p>
         </div>
       )}
 
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-
-      {submitting && (
-        <p className="mt-4 text-sm font-medium text-gray-500">Validando assinatura facial...</p>
-      )}
 
       {cameraOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/70 px-4">
@@ -261,7 +228,7 @@ export function FacialSignatureCapture({ documentId, onComplete }: FacialSignatu
               <button
                 type="button"
                 onClick={capturePhoto}
-                disabled={!cameraReady || submitting}
+                disabled={!cameraReady}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Capturar Foto

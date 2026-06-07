@@ -97,7 +97,38 @@ export class DocumentsService {
       await em.flush();
     }
 
+    if (doc.signatureData) {
+      doc.signatureData = await this.enrichSignatureData(doc.signatureData);
+    }
+
     return doc;
+  }
+
+  private async enrichSignatureData(
+    signatureData: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const signatures = signatureData.signatures;
+    if (!Array.isArray(signatures)) return signatureData;
+
+    const enriched = await Promise.all(
+      signatures.map(async (signature) => {
+        if (!signature || typeof signature !== 'object') return signature;
+
+        const data = signature as Record<string, unknown>;
+        if (
+          data.type === 'WRITTEN' &&
+          typeof data.signatureImageKey === 'string' &&
+          typeof data.signatureImageUrl !== 'string'
+        ) {
+          const { url } = await this.s3Service.getPresignedUrl(data.signatureImageKey);
+          return { ...data, signatureImageUrl: url };
+        }
+
+        return data;
+      }),
+    );
+
+    return { ...signatureData, signatures: enriched };
   }
 
   private validateVariables(required: string[], provided: Record<string, string>): void {

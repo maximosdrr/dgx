@@ -3,6 +3,7 @@ import { UserPayload } from '@docgen/shared';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CreateFacialSignatureDto } from './dto/create-facial-signature.dto';
 import { CreateWrittenSignatureDto } from './dto/create-written-signature.dto';
+import { SaveSignaturesBatchDto } from './dto/save-signatures-batch.dto';
 import { SignaturesService } from './signatures.service';
 
 interface RequestWithIp {
@@ -31,6 +32,15 @@ export class SignaturesController {
     @Req() request: RequestWithIp,
   ) {
     return this.signaturesService.createFacialSignature(dto, user, this.getIp(request));
+  }
+
+  @Post('batch')
+  saveBatch(
+    @Body() dto: SaveSignaturesBatchDto,
+    @CurrentUser() user: UserPayload,
+    @Req() request: RequestWithIp,
+  ) {
+    return this.signaturesService.saveBatch(dto, user, this.getIp(request));
   }
 
   private getIp(request: RequestWithIp): string | undefined {

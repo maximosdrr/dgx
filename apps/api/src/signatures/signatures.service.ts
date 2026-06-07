@@ -12,6 +12,7 @@ import { PdfService } from '../pdf/pdf.service';
 import { S3Service } from '../storage/s3.service';
 import { CreateFacialSignatureDto } from './dto/create-facial-signature.dto';
 import { CreateWrittenSignatureDto } from './dto/create-written-signature.dto';
+import { SaveSignaturesBatchDto, SignatureSlotDto } from './dto/save-signatures-batch.dto';
 
 export interface SignatureResult {
   signatureId: string;
@@ -34,6 +35,52 @@ export class SignaturesService {
     private readonly pdfService: PdfService,
     private readonly s3Service: S3Service,
   ) {}
+
+  async saveBatch(
+    dto: SaveSignaturesBatchDto,
+    user: UserPayload,
+    ipAddress?: string,
+  ): Promise<SignatureResult & { signatures: Record<string, unknown>[] }> {
+    if (!dto.signatures.length) {
+      throw new BadRequestException('At least one signature is required');
+    }
+
+    const em = this.em.fork();
+    const document = await this.getSignableDocument(em, dto.documentId, user);
+    const signedAt = new Date();
+    const processed: Record<string, unknown>[] = [];
+
+    for (const slot of dto.signatures) {
+      if (slot.type === 'WRITTEN') {
+        processed.push(await this.processWrittenSlot(slot, user, document, signedAt));
+      } else {
+        processed.push(await this.processFacialSlot(em, slot, user, document, signedAt, ipAddress));
+      }
+    }
+
+    const primaryType = dto.signatures.some((slot) => slot.type === 'FACIAL') ? 'FACIAL' : 'WRITTEN';
+    const firstSignatureId = String(processed[0].signatureId);
+    const { url, expiresAt } = await this.finalizeSignedDocument({
+      em,
+      document,
+      signatureType: primaryType,
+      signedAt,
+      ipAddress,
+      signatureData: { signatures: processed },
+      logHtml: this.renderBatchSignatureLog(processed, signedAt, ipAddress),
+    });
+
+    return {
+      signatureId: firstSignatureId,
+      documentId: document.id,
+      signedAt: signedAt.toISOString(),
+      signatureType: primaryType,
+      signatureStatus: 'SIGNED',
+      presignedUrl: url,
+      expiresAt,
+      signatures: processed,
+    };
+  }
 
   async createWrittenSignature(
     dto: CreateWrittenSignatureDto,
@@ -170,6 +217,124 @@ export class SignaturesService {
     };
   }
 
+  private async processWrittenSlot(
+    slot: SignatureSlotDto,
+    user: UserPayload,
+    document: Document,
+    signedAt: Date,
+  ): Promise<Record<string, unknown>> {
+    if (!slot.signatureImageBase64 && slot.signatureImageKey) {
+      return {
+        signatureId: slot.signatureId ?? uuidv4(),
+        slotId: slot.slotId,
+        label: slot.label,
+        type: 'WRITTEN',
+        signerName: slot.signerName.trim(),
+        signatureImageKey: slot.signatureImageKey,
+        signatureImageHash: slot.signatureImageHash,
+        signedAt: signedAt.toISOString(),
+      };
+    }
+
+    if (!slot.signatureImageBase64) {
+      throw new BadRequestException(`Missing written signature image for slot ${slot.slotId}`);
+    }
+
+    const imageBuffer = this.decodeBase64Image(slot.signatureImageBase64, 'Signature image');
+    const signatureImageHash = createHash('sha256').update(imageBuffer).digest('hex');
+    const signatureId = uuidv4();
+    const signatureImageKey = `signatures/${user.sub}/${document.id}/${signatureId}.png`;
+    await this.s3Service.uploadFile(signatureImageKey, imageBuffer, 'image/png');
+
+    return {
+      signatureId,
+      slotId: slot.slotId,
+      label: slot.label,
+      type: 'WRITTEN',
+      signerName: slot.signerName.trim(),
+      signatureImageKey,
+      signatureImageHash,
+      signedAt: signedAt.toISOString(),
+    };
+  }
+
+  private async processFacialSlot(
+    em: EntityManager,
+    slot: SignatureSlotDto,
+    user: UserPayload,
+    document: Document,
+    signedAt: Date,
+    ipAddress?: string,
+  ): Promise<Record<string, unknown>> {
+    if (!slot.faceImageBase64 && slot.signatureKey) {
+      return {
+        signatureId: slot.signatureId ?? uuidv4(),
+        slotId: slot.slotId,
+        label: slot.label,
+        type: 'FACIAL',
+        signerName: slot.signerName.trim(),
+        signerDocument: slot.signerDocument,
+        faceImageHash: slot.faceImageHash,
+        signatureKey: slot.signatureKey,
+        signedAt: signedAt.toISOString(),
+      };
+    }
+
+    if (!slot.faceImageBase64) {
+      throw new BadRequestException(`Missing face image for slot ${slot.slotId}`);
+    }
+
+    const faceImage = this.decodeBase64Image(slot.faceImageBase64, 'Face image');
+    const faceImageHash = createHash('sha256').update(faceImage).digest('hex');
+    const signatureId = uuidv4();
+    const signerDocument = (slot.signerDocument ?? '').replace(/\D/g, '');
+    const signerName = slot.signerName.trim();
+
+    const payload = {
+      signatureId,
+      slotId: slot.slotId,
+      documentId: document.id,
+      userId: user.sub,
+      signedAt: signedAt.toISOString(),
+      ipAddress: ipAddress ?? '',
+      signerName,
+      signerDocument,
+      faceImageHash,
+    };
+
+    const secret = this.config.get<string>('BIOMETRIC_SIGNATURE_SECRET')
+      ?? this.config.getOrThrow<string>('JWT_SECRET');
+    const signatureKey = createHmac('sha256', secret)
+      .update(JSON.stringify(payload))
+      .digest('hex');
+
+    const signature = em.create(BiometricSignature, {
+      id: signatureId,
+      user: em.getReference(User, user.sub),
+      document,
+      signerName,
+      signerDocument,
+      faceImageHash,
+      signatureKey,
+      ipAddress,
+      signedAt,
+    });
+
+    em.persist(signature);
+
+    return {
+      signatureId,
+      slotId: slot.slotId,
+      label: slot.label,
+      type: 'FACIAL',
+      signerName,
+      signerDocument,
+      faceImageHash,
+      signatureKey,
+      signedAt: signedAt.toISOString(),
+    };
+  }
+
   private async getSignableDocument(em: EntityManager, documentId: string, user: UserPayload): Promise<Document> {
     const document = await em.findOne(Document, { id: documentId }, { populate: ['template'] });
     if (!document) throw new NotFoundException('Document not found');
@@ -289,6 +454,41 @@ export class SignaturesService {
           <tr><th>Hash SHA-256 da face</th><td style="word-break: break-all;">${this.escapeHtml(faceImageHash)}</td></tr>
           <tr><th>Chave criptográfica</th><td style="word-break: break-all;">${this.escapeHtml(signatureKey)}</td></tr>
         </table>
+      </section>
+    `;
+  }
+
+  private renderBatchSignatureLog(signatures: Record<string, unknown>[], signedAt: Date, ipAddress?: string): string {
+    const rows = signatures.map((signature) => {
+      const type = signature.type === 'FACIAL' ? 'Facial' : 'Escrita';
+      const details = signature.type === 'FACIAL'
+        ? `
+          <div><strong>UUID biométrico:</strong> ${this.escapeHtml(String(signature.signatureId))}</div>
+          <div><strong>Hash da face:</strong> <span style="word-break:break-all">${this.escapeHtml(String(signature.faceImageHash))}</span></div>
+          <div><strong>Chave criptográfica:</strong> <span style="word-break:break-all">${this.escapeHtml(String(signature.signatureKey))}</span></div>
+        `
+        : `
+          <div><strong>UUID do ato:</strong> ${this.escapeHtml(String(signature.signatureId))}</div>
+          <div><strong>Hash da imagem:</strong> <span style="word-break:break-all">${this.escapeHtml(String(signature.signatureImageHash))}</span></div>
+        `;
+
+      return `
+        <div style="border:1px solid #d1d5db;border-radius:8px;padding:14px;margin:12px 0;">
+          <h2>${this.escapeHtml(String(signature.label))}</h2>
+          <div><strong>Tipo:</strong> ${type}</div>
+          <div><strong>Assinante:</strong> ${this.escapeHtml(String(signature.signerName))}</div>
+          ${details}
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <section style="break-before: page; padding-top: 24px;">
+        <h1>Log de Assinaturas</h1>
+        <p>Este documento recebeu ${signatures.length} assinatura(s) nesta transação.</p>
+        <p><strong>Data:</strong> ${this.escapeHtml(signedAt.toISOString())}</p>
+        <p><strong>IP de origem:</strong> ${this.escapeHtml(ipAddress ?? 'Não informado')}</p>
+        ${rows}
       </section>
     `;
   }
